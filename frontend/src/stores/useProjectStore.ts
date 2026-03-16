@@ -294,32 +294,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => {
                 })
                 const payload = response.data ?? {}
                 const newId = String(payload.id ?? '')
-                if (newId) {
-                    const optimisticProject: ProjectItem = {
-                        id: newId,
-                        name: form.name.trim(),
-                        genre: form.genre.trim(),
-                        style: form.style.trim(),
-                        template_id: form.template_id?.trim() || undefined,
-                        status: String(payload.status ?? 'init'),
-                        chapter_count: 0,
-                        entity_count: 0,
-                        event_count: 0,
-                        created_at:
-                            typeof payload.created_at === 'string'
-                                ? payload.created_at
-                                : new Date().toISOString(),
-                    }
-                    set((state) => ({
-                        projects: [
-                            optimisticProject,
-                            ...state.projects.filter((item) => item.id !== newId),
-                        ],
-                        _projectsLastFetch: Date.now(),
-                        projectsError: null,
-                    }))
-                }
+                
+                // 只调用 fetchProjects，不使用 optimistic update，避免重复
                 void get().fetchProjects({ force: true })
+                
                 return newId
             } catch (error) {
                 console.error('创建项目失败', error)

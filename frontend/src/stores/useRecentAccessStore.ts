@@ -33,6 +33,7 @@ function saveToStorage(items: RecentAccessItem[]) {
 interface RecentAccessStore {
     items: RecentAccessItem[]
     addAccess: (item: Omit<RecentAccessItem, 'timestamp'>) => void
+    removeAccess: (id: string) => void  // ✅ 新增删除方法
     clearAll: () => void
 }
 
@@ -47,6 +48,12 @@ export const useRecentAccessStore = create<RecentAccessStore>((set, get) => ({
         const updated = [newItem, ...filtered].slice(0, MAX_ITEMS)
         set({ items: updated })
         saveToStorage(updated)
+    },
+
+    removeAccess: (id: string) => {  // ✅ 新增删除方法
+        const filtered = get().items.filter(i => i.id !== id)
+        set({ items: filtered })
+        saveToStorage(filtered)
     },
 
     clearAll: () => {

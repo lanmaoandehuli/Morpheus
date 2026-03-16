@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProjectStore } from '../stores/useProjectStore'
 import { useToastStore } from '../stores/useToastStore'
+import { useRecentAccessStore } from '../stores/useRecentAccessStore'  // ✅ 添加导入
 import PageTransition from '../components/ui/PageTransition'
 import Skeleton from '../components/ui/Skeleton'
 import ProjectCreateModal from '../components/project/ProjectCreateModal'
@@ -9,6 +10,7 @@ import ProjectCreateModal from '../components/project/ProjectCreateModal'
 export default function ProjectList() {
   const { projects, loading, projectsError, fetchProjects, deleteProject, deleteProjects } = useProjectStore()
   const addToast = useToastStore((s) => s.addToast)
+  const removeAccess = useRecentAccessStore((s) => s.removeAccess)  // ✅ 获取删除方法
   const navigate = useNavigate()
 
   const [showModal, setShowModal] = useState(false)
@@ -65,6 +67,14 @@ export default function ProjectList() {
     try {
       await deleteProject(id)
       addToast('success', '项目已删除')
+      
+      // ✅ 清理最近访问记录
+      removeAccess(id)
+      
+      // 如果当前正在查看这个项目，返回项目列表
+      if (window.location.pathname.includes(`/projects/${id}`)) {
+        navigate('/')
+      }
     } catch {
       addToast('error', '删除项目失败，请重试')
     }

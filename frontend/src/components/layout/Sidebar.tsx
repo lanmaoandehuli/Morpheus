@@ -145,20 +145,31 @@ export default function Sidebar() {
                 {!collapsed && recentItems.length > 0 && (
                     <div className="sidebar__section">
                         <span className="sidebar__section-title">最近访问</span>
-                        {recentItems.map((item) => (
-                            <NavLink
-                                key={item.id}
-                                to={item.path}
-                                className={({ isActive }) =>
-                                    `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`
+                        {(() => {
+                            // 过滤掉重复的项目 ID，只保留最后一个
+                            const uniqueItems = recentItems.reduce((acc, item) => {
+                                const existingIndex = acc.findIndex(i => i.id === item.id)
+                                if (existingIndex >= 0) {
+                                    acc.splice(existingIndex, 1)
                                 }
-                            >
-                                <span className="sidebar__icon">
-                                    {item.type === 'project' ? <IconFolder /> : <IconBook />}
-                                </span>
-                                <span>{item.name}</span>
-                            </NavLink>
-                        ))}
+                                acc.push(item)
+                                return acc
+                            }, [] as typeof recentItems)
+                            return uniqueItems.map((item) => (
+                                <NavLink
+                                    key={item.id}
+                                    to={item.path}
+                                    className={({ isActive }) =>
+                                        `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`
+                                    }
+                                >
+                                    <span className="sidebar__icon">
+                                        {item.type === 'project' ? <IconFolder /> : <IconBook />}
+                                    </span>
+                                    <span>{item.name}</span>
+                                </NavLink>
+                            ))
+                        })()}
                     </div>
                 )}
 
