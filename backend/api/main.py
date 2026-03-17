@@ -2924,6 +2924,7 @@ async def create_chapter(req: CreateChapterRequest):
         status=ChapterStatus.DRAFT,
         volume_id=req.volume_id,
         event_id=req.event_id,
+    )
     chapters[chapter.id] = chapter
     save_chapter(chapter)
     logger.info(
