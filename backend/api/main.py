@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     data_dir: str = "../data"
 
-    llm_provider: str = "minimax"
+    llm_provider: str = "zhipu"
     remote_llm_enabled: bool = False
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4-turbo-preview"
@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 4000
     deepseek_max_tokens: int = 8192
     llm_context_window_tokens: int = 32768
+
+    zhipu_api_key: Optional[str] = None
+    zhipu_model: str = "glm-5"
+    zhipu_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+
     deepseek_context_window_tokens: int = 131072
 
     embedding_model: str = "embo-01"
@@ -78,6 +83,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     enable_http_logging: bool = True
     log_file: Optional[str] = None
+
 
     model_config = SettingsConfigDict(
         extra="ignore",
@@ -97,10 +103,11 @@ app.add_middleware(
 )
 
 logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    level=getattr(logging, settings.log_level.upper(), logging.DEBUG), # Changed INFO to DEBUG
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 logger = logging.getLogger("novelist.api")
+logger.setLevel(logging.DEBUG) # Added this line
 if settings.log_file:
     log_path = Path(settings.log_file).expanduser().resolve()
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,7 +157,7 @@ def sanitize_trace_payload(trace: AgentTrace) -> Dict[str, Any]:
 
 def _normalize_provider(provider: str) -> str:
     candidate = (provider or "openai").strip().lower()
-    if candidate not in {"openai", "minimax", "deepseek"}:
+    if candidate not in {"openai", "minimax", "deepseek", "zhipu"}:
         logger.warning("invalid llm provider configured=%s fallback=openai", provider)
         return "openai"
     return candidate
@@ -164,6 +171,8 @@ def resolve_llm_runtime() -> Dict[str, Any]:
     has_openai_key = bool(openai_key)
     has_minimax_key = bool(minimax_key)
     has_deepseek_key = bool(deepseek_key)
+    zhipu_key = (settings.zhipu_api_key or "").strip()
+    has_zhipu_key = bool(zhipu_key)
 
     remote_requested = settings.remote_llm_enabled
     remote_env_raw = os.getenv("REMOTE_LLM_ENABLED")
@@ -180,11 +189,13 @@ def resolve_llm_runtime() -> Dict[str, Any]:
         "openai": has_openai_key,
         "minimax": has_minimax_key,
         "deepseek": has_deepseek_key,
+        "zhipu": has_zhipu_key,
     }
     provider_fallback_order = {
-        "openai": ["deepseek", "minimax"],
-        "minimax": ["deepseek", "openai"],
-        "deepseek": ["openai", "minimax"],
+        "openai": ["deepseek", "minimax", "zhipu"],
+        "minimax": ["deepseek", "openai", "zhipu"],
+        "deepseek": ["openai", "minimax", "zhipu"],
+        "zhipu": ["deepseek", "openai", "minimax"],
     }
 
     effective_provider = requested_provider
@@ -204,6 +215,10 @@ def resolve_llm_runtime() -> Dict[str, Any]:
         provider_key = deepseek_key
         effective_model = settings.deepseek_model
         effective_base_url = settings.deepseek_base_url
+    elif effective_provider == "zhipu":
+        provider_key = zhipu_key
+        effective_model = settings.zhipu_model
+        effective_base_url = settings.zhipu_base_url
     else:
         provider_key = openai_key
         effective_model = settings.openai_model
@@ -224,6 +239,7 @@ def resolve_llm_runtime() -> Dict[str, Any]:
         "has_openai_key": has_openai_key,
         "has_minimax_key": has_minimax_key,
         "has_deepseek_key": has_deepseek_key,
+        "has_zhipu_key": has_zhipu_key,
     }
 
 
@@ -262,6 +278,7 @@ traces: Dict[str, AgentTrace] = {}
 metrics_history: List[Metrics] = []
 vector_index_signatures: Dict[str, str] = {}
 
+logger.info("DEBUG: settings.llm_provider = %s", settings.llm_provider)
 llm_runtime = resolve_llm_runtime()
 logger.info(
     "llm runtime requested_provider=%s effective_provider=%s model=%s remote_requested=%s remote_effective=%s remote_ready=%s auto_enabled=%s keys(openai=%s,minimax=%s,deepseek=%s)",
@@ -2123,11 +2140,14 @@ async def llm_runtime_status():
         "has_openai_key": runtime["has_openai_key"],
         "has_minimax_key": runtime["has_minimax_key"],
         "has_deepseek_key": runtime["has_deepseek_key"],
+        "has_zhipu_key": runtime.get("has_zhipu_key", False),
         "llm_temperature": settings.llm_temperature,
         "llm_max_tokens": settings.llm_max_tokens,
         "llm_context_window_tokens": settings.llm_context_window_tokens,
         "deepseek_max_tokens": settings.deepseek_max_tokens,
         "deepseek_context_window_tokens": settings.deepseek_context_window_tokens,
+        "_debug_settings_llm_provider": settings.llm_provider,
+        "_debug_settings_zhipu_api_key_len": len(settings.zhipu_api_key or ""),
     }
 
 
@@ -3441,4 +3461,10 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host=settings.api_host, port=settings.api_port)
+    uvicorn.run("api.main:app", host=settings.api_host, port=settings.api_port, reload=True)
+
+
+# ── Morpheus v2: 注册知识图谱路由 ──
+from api.v2_knowledge import router as v2_router, init_v2_routes
+init_v2_routes(resolve_project, get_or_create_store)
+app.include_router(v2_router)

@@ -143,6 +143,8 @@ class MemoryStore:
         self.db_path = Path(db_path)
         self.three_layer = ThreeLayerMemory(project_path)
         self._init_db()
+        from memory.knowledge_store import KnowledgeStore
+        self.knowledge = KnowledgeStore(self)
 
     def _connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -248,6 +250,9 @@ class MemoryStore:
                 )
                 """
             )
+            # ── v2 tables: 大纲 + 知识图谱 ──
+            from memory.knowledge_store import KnowledgeStore
+            KnowledgeStore.create_tables(conn)
             conn.commit()
 
     def _file_item_id(self, source_path: Path) -> str:

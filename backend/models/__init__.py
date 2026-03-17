@@ -207,3 +207,181 @@ class Metrics(BaseModel):
     chapter_id: Optional[int] = None
     project_id: Optional[str] = None
     recorded_at: datetime = Field(default_factory=datetime.now)
+
+
+# ──────────────────────────────────────────────
+# Morpheus v2: 大纲 + 知识图谱
+# ──────────────────────────────────────────────
+
+class VolumeStatus(str, Enum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+
+
+class EventStatus(str, Enum):
+    PENDING = "pending"
+    WRITING = "writing"
+    COMPLETED = "completed"
+
+
+class ForeshadowStatus(str, Enum):
+    PLANTED = "planted"
+    COLLECTED = "collected"
+
+
+class ThreadStatus(str, Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+    ABANDONED = "abandoned"
+
+
+class ThreadPriority(str, Enum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+# ── 大纲 ──
+
+class Volume(BaseModel):
+    id: str
+    project_id: str
+    volume_number: int
+    title: str
+    summary: Optional[str] = ""
+    goal: Optional[str] = ""
+    status: VolumeStatus = VolumeStatus.ACTIVE
+    is_locked: bool = False
+    sort_order: int = 0
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class StoryEvent(BaseModel):
+    id: str
+    project_id: str
+    volume_id: str
+    event_number: int
+    title: str
+    summary: Optional[str] = ""
+    goal: Optional[str] = ""
+    status: EventStatus = EventStatus.PENDING
+    is_locked: bool = False
+    sort_order: int = 0
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# ── 角色系统 ──
+
+class CharacterTemplate(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    gender: Optional[str] = ""
+    identity: Optional[str] = ""
+    personality: Optional[str] = ""
+    appearance: Optional[str] = ""
+    background: Optional[str] = ""
+    is_alive: bool = True
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class CharacterState(BaseModel):
+    id: str
+    character_id: str
+    age: Optional[str] = ""
+    location: Optional[str] = ""
+    abilities: List[str] = Field(default_factory=list)
+    inventory: List[str] = Field(default_factory=list)
+    emotional_state: Optional[str] = ""
+    custom_fields: Dict[str, Any] = Field(default_factory=dict)
+    as_of_chapter: int = 0
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class CharacterRelation(BaseModel):
+    id: str
+    project_id: str
+    character_a_id: str
+    character_b_id: str
+    relation_type: str
+    strength: int = Field(default=5, ge=1, le=10)
+    description: Optional[str] = ""
+    turning_point: Optional[str] = ""
+    as_of_chapter: int = 0
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# ── 金手指系统 ──
+
+class CheatSystem(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    core_logic: str
+    limitations: Optional[str] = ""
+    upgrade_conditions: Optional[str] = ""
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class CheatState(BaseModel):
+    id: str
+    cheat_id: str
+    current_level: Optional[str] = ""
+    unlocked_features: List[str] = Field(default_factory=list)
+    usage_status: Dict[str, Any] = Field(default_factory=dict)
+    custom_fields: Dict[str, Any] = Field(default_factory=dict)
+    as_of_chapter: int = 0
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# ── 世界观 / 伏笔 / 线索 / 规则 ──
+
+class WorldFact(BaseModel):
+    id: str
+    project_id: str
+    category: str
+    title: str
+    content: str
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class Foreshadowing(BaseModel):
+    id: str
+    project_id: str
+    planted_chapter: int
+    description: str
+    status: ForeshadowStatus = ForeshadowStatus.PLANTED
+    collected_chapter: Optional[int] = None
+    collection_description: Optional[str] = ""
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class OpenThread(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    description: str
+    priority: ThreadPriority = ThreadPriority.NORMAL
+    opened_chapter: int
+    closed_chapter: Optional[int] = None
+    status: ThreadStatus = ThreadStatus.OPEN
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class ConsistencyRule(BaseModel):
+    id: str
+    project_id: str
+    rule_type: str
+    target: str
+    condition: str
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)

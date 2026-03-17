@@ -10,6 +10,7 @@ const WritingConsolePage = lazy(() => import('./pages/WritingConsolePage'))
 const ChapterWorkbenchPage = lazy(() => import('./pages/ChapterWorkbenchPage'))
 const MemoryBrowserPage = lazy(() => import('./pages/MemoryBrowserPage'))
 const KnowledgeGraphPage = lazy(() => import('./pages/KnowledgeGraphPage'))
+const KnowledgeGraphV2Page = lazy(() => import('./pages/KnowledgeGraphV2Page'))
 const TraceReplayPage = lazy(() => import('./pages/TraceReplayPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 
@@ -25,7 +26,7 @@ export default function App() {
             <Route path="/project/:projectId/chapter" element={<ChapterWorkbenchPage />} />
             <Route path="/project/:projectId/chapter/:chapterId" element={<ChapterWorkbenchPage />} />
             <Route path="/project/:projectId/memory" element={<MemoryBrowserPage />} />
-            <Route path="/project/:projectId/graph" element={<KnowledgeGraphPage />} />
+            <Route path="/project/:projectId/graph" element={<KnowledgeGraphV2Page />} />
             <Route path="/project/:projectId/trace" element={<TraceReplayPage />} />
             <Route path="/project/:projectId/trace/:chapterId" element={<TraceReplayPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
