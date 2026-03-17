@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from models import (
+    CharacterRole,
     CheatState,
     CheatSystem,
     CharacterRelation,
@@ -77,11 +78,13 @@ class KnowledgeStore:
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
                 name TEXT NOT NULL,
+                role_type TEXT DEFAULT 'other',
                 gender TEXT DEFAULT '',
                 identity TEXT DEFAULT '',
                 personality TEXT DEFAULT '',
                 appearance TEXT DEFAULT '',
                 background TEXT DEFAULT '',
+                motivation TEXT DEFAULT '',
                 is_alive INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -93,10 +96,13 @@ class KnowledgeStore:
                 id TEXT PRIMARY KEY,
                 character_id TEXT NOT NULL UNIQUE,
                 age TEXT DEFAULT '',
+                status TEXT DEFAULT '',
                 location TEXT DEFAULT '',
                 abilities TEXT DEFAULT '[]',
+                weapons TEXT DEFAULT '[]',
                 inventory TEXT DEFAULT '[]',
                 emotional_state TEXT DEFAULT '',
+                battle_power TEXT DEFAULT '',
                 custom_fields TEXT DEFAULT '{}',
                 as_of_chapter INTEGER DEFAULT 0,
                 updated_at TEXT NOT NULL,
@@ -307,11 +313,11 @@ class KnowledgeStore:
     def create_character(self, c: CharacterTemplate):
         with self._connection() as conn:
             conn.execute(
-                """INSERT INTO character_templates (id,project_id,name,gender,identity,
-                   personality,appearance,background,is_alive,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (c.id, c.project_id, c.name, c.gender, c.identity, c.personality,
-                 c.appearance, c.background, int(c.is_alive),
+                """INSERT INTO character_templates (id,project_id,name,role_type,gender,identity,
+                   personality,appearance,background,motivation,is_alive,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (c.id, c.project_id, c.name, c.role_type.value, c.gender, c.identity, c.personality,
+                 c.appearance, c.background, c.motivation, int(c.is_alive),
                  c.created_at.isoformat(), c.updated_at.isoformat()),
             )
             conn.commit()
@@ -320,10 +326,10 @@ class KnowledgeStore:
         c.updated_at = datetime.now()
         with self._connection() as conn:
             conn.execute(
-                """UPDATE character_templates SET name=?,gender=?,identity=?,personality=?,
-                   appearance=?,background=?,is_alive=?,updated_at=? WHERE id=?""",
-                (c.name, c.gender, c.identity, c.personality, c.appearance, c.background,
-                 int(c.is_alive), c.updated_at.isoformat(), c.id),
+                """UPDATE character_templates SET name=?,role_type=?,gender=?,identity=?,personality=?,
+                   appearance=?,background=?,motivation=?,is_alive=?,updated_at=? WHERE id=?""",
+                (c.name, c.role_type.value, c.gender, c.identity, c.personality, c.appearance, c.background,
+                 c.motivation, int(c.is_alive), c.updated_at.isoformat(), c.id),
             )
             conn.commit()
 
@@ -338,20 +344,23 @@ class KnowledgeStore:
         s.updated_at = datetime.now()
         with self._connection() as conn:
             conn.execute(
-                """INSERT INTO character_states (id,character_id,age,location,abilities,
-                   inventory,emotional_state,custom_fields,as_of_chapter,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)
+                """INSERT INTO character_states (id,character_id,age,status,location,abilities,
+                   weapons,inventory,emotional_state,battle_power,custom_fields,as_of_chapter,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(character_id) DO UPDATE SET
-                   age=excluded.age, location=excluded.location,
-                   abilities=excluded.abilities, inventory=excluded.inventory,
+                   age=excluded.age, status=excluded.status,
+                   location=excluded.location, abilities=excluded.abilities,
+                   weapons=excluded.weapons, inventory=excluded.inventory,
                    emotional_state=excluded.emotional_state,
+                   battle_power=excluded.battle_power,
                    custom_fields=excluded.custom_fields,
                    as_of_chapter=excluded.as_of_chapter,
                    updated_at=excluded.updated_at""",
-                (s.id, s.character_id, s.age, s.location,
+                (s.id, s.character_id, s.age, s.status, s.location,
                  json.dumps(s.abilities, ensure_ascii=False),
+                 json.dumps(s.weapons, ensure_ascii=False),
                  json.dumps(s.inventory, ensure_ascii=False),
-                 s.emotional_state,
+                 s.emotional_state, s.battle_power,
                  json.dumps(s.custom_fields, ensure_ascii=False),
                  s.as_of_chapter, s.updated_at.isoformat()),
             )
@@ -622,9 +631,11 @@ class KnowledgeStore:
     def _row_to_character(r) -> CharacterTemplate:
         return CharacterTemplate(
             id=r["id"], project_id=r["project_id"], name=r["name"],
+            role_type=CharacterRole(r["role_type"]) if r["role_type"] else CharacterRole.OTHER,
             gender=r["gender"] or "", identity=r["identity"] or "",
             personality=r["personality"] or "", appearance=r["appearance"] or "",
-            background=r["background"] or "", is_alive=bool(r["is_alive"]),
+            background=r["background"] or "", motivation=r["motivation"] or "",
+            is_alive=bool(r["is_alive"]),
             created_at=datetime.fromisoformat(r["created_at"]),
             updated_at=datetime.fromisoformat(r["updated_at"]),
         )
@@ -633,10 +644,12 @@ class KnowledgeStore:
     def _row_to_char_state(r) -> CharacterState:
         return CharacterState(
             id=r["id"], character_id=r["character_id"],
-            age=r["age"] or "", location=r["location"] or "",
+            age=r["age"] or "", status=r["status"] or "", location=r["location"] or "",
             abilities=json.loads(r["abilities"]) if r["abilities"] else [],
+            weapons=json.loads(r["weapons"]) if r["weapons"] else [],
             inventory=json.loads(r["inventory"]) if r["inventory"] else [],
             emotional_state=r["emotional_state"] or "",
+            battle_power=r["battle_power"] or "",
             custom_fields=json.loads(r["custom_fields"]) if r["custom_fields"] else {},
             as_of_chapter=r["as_of_chapter"] or 0,
             updated_at=datetime.fromisoformat(r["updated_at"]),

@@ -143,17 +143,19 @@ async def list_characters(project_id: str):
 @router.post("/projects/{project_id}/characters")
 async def create_character(project_id: str, payload: Dict[str, Any]):
     store = _ensure_project(project_id)
-    from models import CharacterTemplate
+    from models import CharacterTemplate, CharacterRole
     now = datetime.now()
     c = CharacterTemplate(
         id=str(uuid4()),
         project_id=project_id,
         name=payload.get("name", "未命名"),
+        role_type=CharacterRole(payload.get("role_type", "other")),
         gender=payload.get("gender", ""),
         identity=payload.get("identity", ""),
         personality=payload.get("personality", ""),
         appearance=payload.get("appearance", ""),
         background=payload.get("background", ""),
+        motivation=payload.get("motivation", ""),
         created_at=now,
         updated_at=now,
     )
@@ -167,9 +169,12 @@ async def update_character(project_id: str, char_id: str, payload: Dict[str, Any
     c = store.knowledge.get_character(char_id)
     if not c:
         raise HTTPException(status_code=404, detail="Character not found")
-    for key in ("name", "gender", "identity", "personality", "appearance", "background", "is_alive"):
+    from models import CharacterRole
+    for key in ("name", "gender", "identity", "personality", "appearance", "background", "is_alive", "motivation"):
         if key in payload:
             setattr(c, key, payload[key])
+    if "role_type" in payload:
+        c.role_type = CharacterRole(payload["role_type"])
     store.knowledge.update_character(c)
     return c.model_dump()
 

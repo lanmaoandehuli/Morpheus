@@ -43,7 +43,7 @@ function Section({ title, children, action }: { title: string; children: React.R
 
 /* ── Simple inline form ── */
 function InlineForm({ fields, onSubmit, placeholder }: {
-  fields: { key: string; label: string; type?: string; placeholder?: string }[]
+  fields: { key: string; label: string; type?: string; placeholder?: string; options?: { value: string; label: string }[] }[]
   onSubmit: (vals: Record<string, string>) => void
   placeholder?: string
 }) {
@@ -63,13 +63,23 @@ function InlineForm({ fields, onSubmit, placeholder }: {
       {fields.map(f => (
         <div key={f.key}>
           <label className="text-xs text-zinc-500 block mb-1">{f.label}</label>
-          <input
-            type={f.type || 'text'}
-            placeholder={f.placeholder || f.label}
-            value={vals[f.key] || ''}
-            onChange={e => setVals(v => ({ ...v, [f.key]: e.target.value }))}
-            className="border border-zinc-300 rounded px-2 py-1 text-sm w-32 focus:outline-none focus:border-indigo-400"
-          />
+          {f.type === 'select' && f.options ? (
+            <select
+              value={vals[f.key] || ''}
+              onChange={e => setVals(v => ({ ...v, [f.key]: e.target.value }))}
+              className="border border-zinc-300 rounded px-2 py-1 text-sm w-32 focus:outline-none focus:border-indigo-400 bg-white"
+            >
+              {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          ) : (
+            <input
+              type={f.type || 'text'}
+              placeholder={f.placeholder || f.label}
+              value={vals[f.key] || ''}
+              onChange={e => setVals(v => ({ ...v, [f.key]: e.target.value }))}
+              className="border border-zinc-300 rounded px-2 py-1 text-sm w-32 focus:outline-none focus:border-indigo-400"
+            />
+          )}
         </div>
       ))}
       <button onClick={() => { onSubmit(vals); setVals({}); setOpen(false) }}
@@ -197,13 +207,29 @@ function OutlineTab({ pid }: { pid: string }) {
 /* ═══════════════════════════════════
    Tab: 角色 (Characters)
    ═══════════════════════════════════ */
+const ROLE_LABELS: Record<string, { label: string; color: string }> = {
+  protagonist: { label: '主角', color: 'bg-blue-100 text-blue-700' },
+  villain: { label: '反派', color: 'bg-red-100 text-red-700' },
+  supporting: { label: '配角', color: 'bg-purple-100 text-purple-700' },
+  minion: { label: '喽啰', color: 'bg-zinc-100 text-zinc-600' },
+  other: { label: '其他', color: 'bg-zinc-50 text-zinc-400' },
+}
+const ROLE_ORDER = ['protagonist', 'villain', 'supporting', 'minion', 'other']
+
 function CharactersTab({ pid }: { pid: string }) {
   const [chars, setChars] = useState<CharacterTemplate[]>([])
+  const [states, setStates] = useState<Record<string, CharacterState>>({})
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    setChars(await characters.list(pid))
+    const list = await characters.list(pid)
+    setChars(list)
+    const sm: Record<string, CharacterState> = {}
+    for (const c of list) {
+      try { sm[c.id] = await characters.getState(pid, c.id) } catch {}
+    }
+    setStates(sm)
     setLoading(false)
   }, [pid])
 
@@ -211,55 +237,78 @@ function CharactersTab({ pid }: { pid: string }) {
 
   const addChar = async (vals: Record<string, string>) => {
     await characters.create(pid, {
-      name: vals.name, gender: vals.gender || '', identity: vals.identity || '',
-      personality: vals.personality || '',
+      name: vals.name, role_type: vals.role_type || 'other',
+      gender: vals.gender || '', identity: vals.identity || '',
+      personality: vals.personality || '', motivation: vals.motivation || '',
     })
     load()
   }
 
   if (loading) return <Skeleton className="h-64" />
 
+  const grouped = ROLE_ORDER.map(role => ({
+    role, info: ROLE_LABELS[role],
+    chars: chars.filter(c => (c.role_type || 'other') === role),
+  })).filter(g => g.chars.length > 0)
+
   return (
     <Section title="角色列表" action={
-      <InlineForm
-        fields={[
-          { key: 'name', label: '姓名' },
-          { key: 'gender', label: '性别' },
-          { key: 'identity', label: '身份' },
-        ]}
-        onSubmit={addChar}
-        placeholder="+ 新增角色"
-      />
+      <InlineForm fields={[
+        { key: 'name', label: '姓名' },
+        { key: 'role_type', label: '类型', type: 'select', options: [
+          { value: 'protagonist', label: '主角' },
+          { value: 'villain', label: '反派' },
+          { value: 'supporting', label: '配角' },
+          { value: 'minion', label: '喽啰' },
+        ]},
+        { key: 'identity', label: '身份' },
+        { key: 'gender', label: '性别' },
+      ]} onSubmit={addChar} placeholder="+ 新增角色" />
     }>
       {chars.length === 0 && <p className="text-sm text-zinc-400">暂无角色</p>}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs text-zinc-500 border-b">
-              <th className="pb-2 pr-3">姓名</th>
-              <th className="pb-2 pr-3">性别</th>
-              <th className="pb-2 pr-3">身份</th>
-              <th className="pb-2 pr-3">性格</th>
-              <th className="pb-2">状态</th>
-            </tr>
-          </thead>
-          <tbody>
-            {chars.map(c => (
-              <tr key={c.id} className="border-b border-zinc-100">
-                <td className="py-2 pr-3 font-medium">{c.name}</td>
-                <td className="py-2 pr-3 text-zinc-500">{c.gender}</td>
-                <td className="py-2 pr-3 text-zinc-500">{c.identity}</td>
-                <td className="py-2 pr-3 text-zinc-500">{c.personality}</td>
-                <td className="py-2">
-                  <span className={`text-xs px-1 rounded ${c.is_alive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {c.is_alive ? '存活' : '死亡'}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {grouped.map(g => (
+        <div key={g.role} className="mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${g.info.color}`}>{g.info.label}</span>
+            <span className="text-xs text-zinc-400">{g.chars.length}人</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-xs text-zinc-500 border-b border-zinc-200">
+                <th className="pb-1.5 pr-2">姓名</th>
+                <th className="pb-1.5 pr-2">身份</th>
+                <th className="pb-1.5 pr-2">性格</th>
+                <th className="pb-1.5 pr-2">年龄</th>
+                <th className="pb-1.5 pr-2">状态</th>
+                <th className="pb-1.5 pr-2">战力</th>
+                <th className="pb-1.5 pr-2">武器</th>
+                <th className="pb-1.5">存活</th>
+              </tr></thead>
+              <tbody>
+                {g.chars.map(c => {
+                  const st = states[c.id]
+                  return (
+                    <tr key={c.id} className="border-b border-zinc-100 hover:bg-zinc-50">
+                      <td className="py-1.5 pr-2 font-medium">{c.name}</td>
+                      <td className="py-1.5 pr-2 text-zinc-600">{c.identity || '-'}</td>
+                      <td className="py-1.5 pr-2 text-zinc-500 max-w-[120px] truncate">{c.personality || '-'}</td>
+                      <td className="py-1.5 pr-2 text-zinc-500">{st?.age || '-'}</td>
+                      <td className="py-1.5 pr-2 text-zinc-500">{st?.status || '-'}</td>
+                      <td className="py-1.5 pr-2 text-zinc-500">{st?.battle_power || '-'}</td>
+                      <td className="py-1.5 pr-2 text-zinc-500">{st?.weapons?.join('、') || '-'}</td>
+                      <td className="py-1.5">
+                        <span className={`text-xs px-1 rounded ${c.is_alive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {c.is_alive ? '存活' : '死亡'}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
     </Section>
   )
 }

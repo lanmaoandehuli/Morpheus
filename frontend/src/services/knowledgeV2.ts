@@ -21,16 +21,21 @@ export interface StoryEvent {
   created_at: string; updated_at: string
 }
 
+export type CharacterRole = 'protagonist' | 'supporting' | 'minion' | 'villain' | 'other'
+
 export interface CharacterTemplate {
   id: string; project_id: string; name: string
+  role_type: CharacterRole
   gender: string; identity: string; personality: string
-  appearance: string; background: string; is_alive: boolean
+  appearance: string; background: string; motivation: string
+  is_alive: boolean
   created_at: string; updated_at: string
 }
 
 export interface CharacterState {
-  id: string; character_id: string; age: string; location: string
-  abilities: string[]; inventory: string[]; emotional_state: string
+  id: string; character_id: string; age: string; status: string; location: string
+  abilities: string[]; weapons: string[]; inventory: string[]
+  emotional_state: string; battle_power: string
   custom_fields: Record<string, unknown>; as_of_chapter: number; updated_at: string
 }
 

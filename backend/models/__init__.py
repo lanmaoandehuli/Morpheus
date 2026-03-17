@@ -277,15 +277,24 @@ class StoryEvent(BaseModel):
 
 # ── 角色系统 ──
 
+class CharacterRole(str, Enum):
+    PROTAGONIST = "protagonist"  # 主角
+    SUPPORTING = "supporting"    # 配角
+    MINION = "minion"            # 小喽啰
+    VILLAIN = "villain"          # 大反派
+    OTHER = "other"              # 其他
+
 class CharacterTemplate(BaseModel):
     id: str
     project_id: str
     name: str
+    role_type: CharacterRole = CharacterRole.OTHER
     gender: Optional[str] = ""
     identity: Optional[str] = ""
     personality: Optional[str] = ""
     appearance: Optional[str] = ""
     background: Optional[str] = ""
+    motivation: Optional[str] = ""  # 核心动机（反派必填）
     is_alive: bool = True
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
@@ -295,10 +304,13 @@ class CharacterState(BaseModel):
     id: str
     character_id: str
     age: Optional[str] = ""
+    status: Optional[str] = ""  # 健康/受伤/中毒/修炼中等
     location: Optional[str] = ""
     abilities: List[str] = Field(default_factory=list)
+    weapons: List[str] = Field(default_factory=list)
     inventory: List[str] = Field(default_factory=list)
     emotional_state: Optional[str] = ""
+    battle_power: Optional[str] = ""  # 战力描述，如"筑基初期""三品武者"
     custom_fields: Dict[str, Any] = Field(default_factory=dict)
     as_of_chapter: int = 0
     updated_at: datetime = Field(default_factory=datetime.now)
