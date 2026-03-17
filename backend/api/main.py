@@ -3078,6 +3078,85 @@ async def generate_one_shot_draft(chapter_id: str, req: OneShotDraftRequest):
     }
 
 
+def _build_knowledge_context(store, project_id: str, chapter_number: int) -> str:
+    """Assemble v2 knowledge graph context for chapter generation."""
+    kg = store.knowledge
+    parts = []
+
+    # Current outline position
+    all_events = kg.list_events(project_id)
+    current_event = None
+    current_volume = None
+    for e in all_events:
+        # Heuristic: latest event with status pending or active
+        if e.status in ("pending", "active", "writing"):
+            current_event = e
+            break
+    if not current_event and all_events:
+        current_event = all_events[-1]
+    if current_event:
+        current_volume = kg.get_volume(current_event.volume_id)
+
+    if current_volume and current_event:
+        parts.append(f"【当前大纲位置】卷：{current_volume.title} → 事件：{current_event.title}")
+        if current_event.summary:
+            parts.append(f"事件概要：{current_event.summary}")
+        if current_event.goal:
+            parts.append(f"事件目标：{current_event.goal}")
+
+    # Active characters with states
+    chars = kg.list_characters(project_id)
+    alive_chars = [c for c in chars if c.is_alive]
+    if alive_chars:
+        char_lines = []
+        for c in alive_chars[:10]:  # Limit to top 10
+            state = kg.get_character_state(c.id)
+            line = f"  {c.name}"
+            if c.identity:
+                line += f"（{c.identity}）"
+            if state:
+                if state.location:
+                    line += f"，当前在{state.location}"
+                if state.emotional_state:
+                    line += f"，心情：{state.emotional_state}"
+                if state.abilities:
+                    line += f"，能力：{', '.join(state.abilities[-3:])}"
+            char_lines.append(line)
+        parts.append("【在场角色】\n" + "\n".join(char_lines))
+
+    # Active cheat systems
+    cheat_list = kg.list_cheats(project_id)
+    if cheat_list:
+        cheat_lines = []
+        for cs in cheat_list:
+            state = kg.get_cheat_state(cs.id)
+            line = f"  {cs.name}：{cs.core_logic}"
+            if state and state.current_level:
+                line += f"（等级：{state.current_level}）"
+            cheat_lines.append(line)
+        parts.append("【金手指系统】\n" + "\n".join(cheat_lines))
+
+    # Planted foreshadowings (not yet collected)
+    planted = kg.list_foreshadowings(project_id, "planted")
+    if planted:
+        fs_lines = [f"  第{f.planted_chapter}章埋下：{f.description}" for f in planted[:8]]
+        parts.append("【未收伏笔】\n" + "\n".join(fs_lines))
+
+    # Open threads
+    open_threads = kg.list_threads(project_id, "open")
+    if open_threads:
+        th_lines = [f"  第{t.opened_chapter}章开启：{t.title} - {t.description}" for t in open_threads[:8]]
+        parts.append("【未完结线索】\n" + "\n".join(th_lines))
+
+    # Active consistency rules
+    rules = kg.list_rules(project_id)
+    if rules:
+        rule_lines = [f"  [{r.rule_type}] {r.target}：{r.condition}" for r in rules[:10]]
+        parts.append("【一致性规则】\n" + "\n".join(rule_lines))
+
+    return "\n\n".join(parts) if parts else "（暂无知识图谱数据）"
+
+
 async def _generate_draft_internal(chapter_id: str, force: bool = False) -> Dict[str, Any]:
     chapter = resolve_chapter(chapter_id)
     if not chapter:
@@ -3135,7 +3214,8 @@ async def _generate_draft_internal(chapter_id: str, force: bool = False) -> Dict
         {
             "identity": store.three_layer.get_identity(),
             "project_style": project.style,
-            "previous_chapters": [c.final or c.draft or "" for c in chapter_list(chapter.project_id) if c.chapter_number < chapter.chapter_number][-5:],
+            "previous_chapters": [c.final or c.draft or "" for c in chapter_list(chapter.project_id) if c.chapter_number < chapter.chapter_number][-3:],
+            "knowledge_graph": _build_knowledge_context(store, chapter.project_id, chapter.chapter_number),
         },
     )
     return finalize_generated_draft(

@@ -136,7 +136,9 @@ AGENT_PROMPTS = {
 - callback_targets: 回收目标
 - role_goals: 角色目标字典
 
-请基于上下文和记忆进行创作。""",
+请基于上下文和记忆进行创作。
+
+重要：你会收到「knowledge_graph」字段，包含当前大纲位置、在场角色及状态、金手指系统、未收伏笔、未完结线索和一致性规则。请严格遵守这些约束进行创作。""",
     },
     AgentRole.SETTER: {
         "name": "设定官",
@@ -147,7 +149,7 @@ AGENT_PROMPTS = {
 3. 检查是否有违禁忌约束
 4. 提取本章新设定并记录
 
-请严格检查一致性，如果发现问题请明确指出。""",
+请严格检查一致性，如果发现问题请明确指出。参考knowledge_graph中的角色状态、伏笔和一致性规则。""",
     },
     AgentRole.CONTINUITY: {
         "name": "连续性审校",
@@ -318,6 +320,7 @@ class StudioWorkflow:
             "project_style": context.get("project_style", ""),
             "memory_hits": memory_hits[:12],
             "previous_chapters": context.get("previous_chapters", []),
+            "knowledge_graph": context.get("knowledge_graph", ""),
         }
 
         director_text = await director.think(
@@ -414,6 +417,7 @@ class StudioWorkflow:
             "project_style": context.get("project_style", ""),
             "memory_hits": memory_hits[:12],
             "previous_chapters": context.get("previous_chapters", []),
+            "knowledge_graph": context.get("knowledge_graph", ""),
         }
 
         # Stream director draft first to reduce first-token latency in Studio mode.
