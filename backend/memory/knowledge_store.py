@@ -67,6 +67,7 @@ class KnowledgeStore:
                 status TEXT DEFAULT 'pending',
                 is_locked INTEGER DEFAULT 0,
                 sort_order INTEGER DEFAULT 0,
+                involved_character_ids TEXT DEFAULT '[]',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY (volume_id) REFERENCES volumes(id)
@@ -274,10 +275,11 @@ class KnowledgeStore:
         with self._connection() as conn:
             conn.execute(
                 """INSERT INTO story_events (id,project_id,volume_id,event_number,title,
-                   summary,goal,status,is_locked,sort_order,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   summary,goal,status,is_locked,sort_order,involved_character_ids,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (e.id, e.project_id, e.volume_id, e.event_number, e.title,
                  e.summary, e.goal, e.status.value, int(e.is_locked), e.sort_order,
+                 json.dumps(e.involved_character_ids, ensure_ascii=False),
                  e.created_at.isoformat(), e.updated_at.isoformat()),
             )
             conn.commit()
@@ -287,9 +289,10 @@ class KnowledgeStore:
         with self._connection() as conn:
             conn.execute(
                 """UPDATE story_events SET title=?,summary=?,goal=?,status=?,
-                   is_locked=?,sort_order=?,updated_at=? WHERE id=?""",
+                   is_locked=?,sort_order=?,involved_character_ids=?,updated_at=? WHERE id=?""",
                 (e.title, e.summary, e.goal, e.status.value, int(e.is_locked),
-                 e.sort_order, e.updated_at.isoformat(), e.id),
+                 e.sort_order, json.dumps(e.involved_character_ids, ensure_ascii=False),
+                 e.updated_at.isoformat(), e.id),
             )
             conn.commit()
 
@@ -623,6 +626,7 @@ class KnowledgeStore:
             summary=r["summary"] or "", goal=r["goal"] or "",
             status=EventStatus(r["status"]), is_locked=bool(r["is_locked"]),
             sort_order=r["sort_order"],
+            involved_character_ids=json.loads(r["involved_character_ids"]) if r["involved_character_ids"] else [],
             created_at=datetime.fromisoformat(r["created_at"]),
             updated_at=datetime.fromisoformat(r["updated_at"]),
         )

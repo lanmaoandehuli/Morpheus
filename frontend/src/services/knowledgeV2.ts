@@ -18,6 +18,7 @@ export interface StoryEvent {
   id: string; project_id: string; volume_id: string
   event_number: number; title: string; summary: string; goal: string
   status: string; is_locked: boolean; sort_order: number
+  involved_character_ids: string[]
   created_at: string; updated_at: string
 }
 

@@ -109,6 +109,7 @@ async def create_event(project_id: str, payload: Dict[str, Any]):
         summary=payload.get("summary", ""),
         goal=payload.get("goal", ""),
         sort_order=payload.get("sort_order", 0),
+        involved_character_ids=payload.get("involved_character_ids", []),
         created_at=now,
         updated_at=now,
     )
@@ -122,6 +123,8 @@ async def update_event(project_id: str, event_id: str, payload: Dict[str, Any]):
     e = store.knowledge.get_event(event_id)
     if not e:
         raise HTTPException(status_code=404, detail="Event not found")
+    if "involved_character_ids" in payload:
+        e.involved_character_ids = payload["involved_character_ids"]
     for key in ("title", "summary", "goal", "status", "is_locked", "sort_order", "volume_id"):
         if key in payload:
             setattr(e, key, _enum_val(type(e), key, payload[key]))

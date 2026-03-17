@@ -271,6 +271,7 @@ class StoryEvent(BaseModel):
     status: EventStatus = EventStatus.PENDING
     is_locked: bool = False
     sort_order: int = 0
+    involved_character_ids: List[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 

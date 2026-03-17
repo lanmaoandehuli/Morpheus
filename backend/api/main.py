@@ -3085,16 +3085,16 @@ async def generate_one_shot_draft(chapter_id: str, req: OneShotDraftRequest):
 
 
 def _build_knowledge_context(store, project_id: str, chapter_number: int) -> str:
-    """Assemble v2 knowledge graph context for chapter generation."""
+    """Assemble v2 knowledge graph context with tiered character output."""
+    from models import CharacterRole
     kg = store.knowledge
     parts = []
 
-    # Current outline position
+    # ── 当前大纲位置 ──
     all_events = kg.list_events(project_id)
     current_event = None
     current_volume = None
     for e in all_events:
-        # Heuristic: latest event with status pending or active
         if e.status in ("pending", "active", "writing"):
             current_event = e
             break
@@ -3110,55 +3110,101 @@ def _build_knowledge_context(store, project_id: str, chapter_number: int) -> str
         if current_event.goal:
             parts.append(f"事件目标：{current_event.goal}")
 
-    # Active characters with states
+    # ── 角色分层输出 ──
     chars = kg.list_characters(project_id)
     alive_chars = [c for c in chars if c.is_alive]
-    if alive_chars:
-        char_lines = []
-        for c in alive_chars[:10]:  # Limit to top 10
-            state = kg.get_character_state(c.id)
-            line = f"  {c.name}"
-            if c.identity:
-                line += f"（{c.identity}）"
-            if state:
-                if state.location:
-                    line += f"，当前在{state.location}"
-                if state.emotional_state:
-                    line += f"，心情：{state.emotional_state}"
-                if state.abilities:
-                    line += f"，能力：{', '.join(state.abilities[-3:])}"
-            char_lines.append(line)
-        parts.append("【在场角色】\n" + "\n".join(char_lines))
 
-    # Active cheat systems
+    # 当前事件参与的角色ID
+    involved_ids = set()
+    if current_event and current_event.involved_character_ids:
+        involved_ids = set(current_event.involved_character_ids)
+
+    def _format_char(c):
+        """格式化单个角色的详细信息"""
+        state = kg.get_character_state(c.id)
+        line = f"  {c.name}"
+        if c.identity:
+            line += f"（{c.identity}）"
+        if state:
+            if state.age:
+                line += f"，{state.age}岁"
+            if state.status:
+                line += f"，状态：{state.status}"
+            if state.location:
+                line += f"，当前在{state.location}"
+            if state.battle_power:
+                line += f"，战力：{state.battle_power}"
+            if state.weapons:
+                line += f"，武器：{'、'.join(state.weapons)}"
+            if state.emotional_state:
+                line += f"，心情：{state.emotional_state}"
+        return line
+
+    if alive_chars:
+        # P0: 主角 + 反派 → 始终完整输出
+        p0_chars = [c for c in alive_chars if c.role_type in (CharacterRole.PROTAGONIST, CharacterRole.VILLAIN)]
+        # P1: 当前事件相关的配角 → 完整输出
+        p1_chars = [c for c in alive_chars if c.role_type == CharacterRole.SUPPORTING and c.id in involved_ids]
+        # P2: 其他配角 → 一行简述
+        p2_chars = [c for c in alive_chars if c.role_type == CharacterRole.SUPPORTING and c.id not in involved_ids]
+        # P3: 当前事件相关的小喽啰 → 简述
+        p3_chars = [c for c in alive_chars if c.role_type == CharacterRole.MINION and c.id in involved_ids]
+        # 不输出：其他小喽啰和其他角色
+
+        if p0_chars:
+            lines = ["【核心角色】"]
+            for c in p0_chars:
+                lines.append(_format_char(c))
+            parts.append("\n".join(lines))
+
+        if p1_chars:
+            lines = ["【当前事件配角】"]
+            for c in p1_chars:
+                lines.append(_format_char(c))
+            parts.append("\n".join(lines))
+
+        if p2_chars:
+            names = "、".join(c.name + f"（{c.identity}）" if c.identity else c.name for c in p2_chars)
+            parts.append(f"【其他配角】{names}")
+
+        if p3_chars:
+            names = "、".join(c.name for c in p3_chars)
+            parts.append(f"【在场喽啰】{names}")
+
+    # ── 金手指系统 ──
     cheat_list = kg.list_cheats(project_id)
     if cheat_list:
-        cheat_lines = []
+        cheat_lines = ["【金手指系统】"]
         for cs in cheat_list:
             state = kg.get_cheat_state(cs.id)
             line = f"  {cs.name}：{cs.core_logic}"
             if state and state.current_level:
                 line += f"（等级：{state.current_level}）"
             cheat_lines.append(line)
-        parts.append("【金手指系统】\n" + "\n".join(cheat_lines))
+        parts.append("\n".join(cheat_lines))
 
-    # Planted foreshadowings (not yet collected)
+    # ── 伏笔/线索 ──
     planted = kg.list_foreshadowings(project_id, "planted")
     if planted:
-        fs_lines = [f"  第{f.planted_chapter}章埋下：{f.description}" for f in planted[:8]]
-        parts.append("【未收伏笔】\n" + "\n".join(fs_lines))
+        fs_lines = ["【未收伏笔】"]
+        for f in planted[:8]:
+            fs_lines.append(f"  第{f.planted_chapter}章：{f.description}")
+        parts.append("\n".join(fs_lines))
 
-    # Open threads
     open_threads = kg.list_threads(project_id, "open")
     if open_threads:
-        th_lines = [f"  第{t.opened_chapter}章开启：{t.title} - {t.description}" for t in open_threads[:8]]
-        parts.append("【未完结线索】\n" + "\n".join(th_lines))
+        th_lines = ["【未完结线索】"]
+        for t in open_threads[:8]:
+            th_lines.append(f"  第{t.opened_chapter}章：{t.title} - {t.description}")
+        parts.append("\n".join(th_lines))
 
-    # Active consistency rules
+    # ── 一致性规则 ──
     rules = kg.list_rules(project_id)
     if rules:
-        rule_lines = [f"  [{r.rule_type}] {r.target}：{r.condition}" for r in rules[:10]]
-        parts.append("【一致性规则】\n" + "\n".join(rule_lines))
+        rule_lines = ["【一致性规则】"]
+        for r in rules[:10]:
+            rule_lines.append(f"  [{r.rule_type}] {r.target}：{r.condition}")
+        parts.append("\n".join(rule_lines))
 
     return "\n\n".join(parts) if parts else "（暂无知识图谱数据）"
 
