@@ -1937,6 +1937,8 @@ class CreateChapterRequest(BaseModel):
     chapter_number: int
     title: str
     goal: str
+    volume_id: Optional[str] = None
+    event_id: Optional[str] = None
 
 
 class ConsistencyCheckRequest(BaseModel):
@@ -2461,6 +2463,8 @@ async def list_chapters(project_id: str):
             "status": chapter.status.value,
             "word_count": chapter.word_count,
             "conflict_count": len(chapter.conflicts),
+            "volume_id": chapter.volume_id,
+            "event_id": chapter.event_id,
             "updated_at": chapter.updated_at.isoformat(),
         }
         for chapter in chapter_list(project_id)
@@ -2918,7 +2922,8 @@ async def create_chapter(req: CreateChapterRequest):
         title=req.title,
         goal=req.goal,
         status=ChapterStatus.DRAFT,
-    )
+        volume_id=req.volume_id,
+        event_id=req.event_id,
     chapters[chapter.id] = chapter
     save_chapter(chapter)
     logger.info(

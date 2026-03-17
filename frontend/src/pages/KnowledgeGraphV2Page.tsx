@@ -9,6 +9,7 @@ import {
   type CheatSystem, type WorldFact, type Foreshadowing,
   type OpenThread, type ConsistencyRule, type KnowledgeSummary,
 } from '../services/knowledgeV2'
+import { api } from '../lib/api'
 
 const TABS = ['大纲', '角色', '金手指', '世界观', '伏笔/线索', '规则'] as const
 type Tab = typeof TABS[number]
@@ -89,6 +90,7 @@ function InlineForm({ fields, onSubmit, placeholder }: {
 function OutlineTab({ pid }: { pid: string }) {
   const [vols, setVols] = useState<Volume[]>([])
   const [evtMap, setEvtMap] = useState<Record<string, StoryEvent[]>>({})
+  const [chapterMap, setChapterMap] = useState<Record<string, { chapter_number: number; title: string; status: string }[]>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -102,6 +104,17 @@ function OutlineTab({ pid }: { pid: string }) {
       ;(m[e.volume_id] ??= []).push(e)
     }
     setEvtMap(m)
+    // Load chapters grouped by event_id
+    try {
+      const chRes = await api.get<{ id: string; chapter_number: number; title: string; status: string; event_id?: string }[]>(`/projects/${pid}/chapters`)
+      const cm: Record<string, typeof chRes> = {}
+      for (const c of chRes.data) {
+        if (c.event_id) {
+          ;(cm[c.event_id] ??= []).push(c)
+        }
+      }
+      setChapterMap(cm)
+    } catch { /* chapters API may not have event_id yet */ }
     setLoading(false)
   }, [pid])
 
@@ -142,13 +155,27 @@ function OutlineTab({ pid }: { pid: string }) {
             {expanded === v.id && (
               <div className="ml-6 mt-2 border-l-2 border-zinc-200 pl-3">
                 {(evtMap[v.id] || []).map(e => (
-                  <div key={e.id} className="py-1 flex items-center gap-2">
-                    <span className="text-xs text-zinc-500">📌</span>
-                    <span className="text-sm text-zinc-700">{e.title}</span>
-                    {e.summary && <span className="text-xs text-zinc-400">{e.summary}</span>}
-                    <span className={`text-xs px-1 rounded ${e.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-500'}`}>
+                  <div key={e.id} className="py-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-500">📌</span>
+                      <span className="text-sm text-zinc-700">{e.title}</span>
+                      {e.summary && <span className="text-xs text-zinc-400">{e.summary}</span>}
+                      <span className={`text-xs px-1 rounded ${e.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-500'}`}>
                       {e.status}
                     </span>
+                    </div>
+                    {(chapterMap[e.id] || []).length > 0 && (
+                      <div className="ml-6 mt-1">
+                        {(chapterMap[e.id] || []).map(ch => (
+                          <div key={ch.id} className="text-xs text-zinc-400 py-0.5 flex items-center gap-1">
+                            <span>📄 第{ch.chapter_number}章 {ch.title}</span>
+                            <span className={`px-1 rounded ${ch.status === 'final' ? 'bg-blue-100 text-blue-600' : 'bg-zinc-100 text-zinc-400'}`}>
+                              {ch.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div className="mt-2">

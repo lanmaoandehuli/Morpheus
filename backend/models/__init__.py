@@ -131,6 +131,8 @@ class Chapter(BaseModel):
     final: Optional[str] = None
     status: ChapterStatus = ChapterStatus.DRAFT
     word_count: int = 0
+    volume_id: Optional[str] = None
+    event_id: Optional[str] = None
     first_pass_ok: Optional[bool] = None
     memory_hit_count: int = 0
     p0_conflict_count: int = 0
