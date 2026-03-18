@@ -355,6 +355,35 @@ def projects_root() -> Path:
     return root
 
 
+def _load_project_writing_style_text(project_id: str) -> str:
+    """从 project.json 加载写作风格，返回简化的提示文本"""
+    try:
+        project_json_path = projects_root() / project_id / "project.json"
+        if project_json_path.exists():
+            data = json.loads(project_json_path.read_text(encoding="utf-8"))
+            ws = data.get("writing_style")
+            if not ws:
+                return {}
+            # 将风格对象转成提示文本
+            parts = []
+            if ws.get("tone"):
+                parts.append(f"语气：{ws['tone']}")
+            if ws.get("sentence_length"):
+                parts.append(f"句式：{ws['sentence_length']}句为主")
+            if ws.get("vocabulary"):
+                parts.append(f"词汇：{ws['vocabulary']}风格")
+            if ws.get("pov"):
+                parts.append(f"人称：{ws['pov']}")
+            if ws.get("dialogue_ratio"):
+                parts.append(f"对话占比：{ws['dialogue_ratio']}")
+            if ws.get("excitement_preference"):
+                parts.append(f"爽点类型：{ws['excitement_preference']}")
+            return "，".join(parts) if parts else ""
+    except Exception:
+        pass
+    return {}
+
+
 def project_path(project_id: str) -> Path:
     path = projects_root() / project_id
     path.mkdir(parents=True, exist_ok=True)
@@ -1560,6 +1589,7 @@ def build_one_shot_messages(
                     "one_line_premise": premise,
                     "target_words": req.target_words,
                     "project_style": project.style,
+                    "writing_style_text": _load_project_writing_style_text(project.id),
                     "taboo_constraints": project.taboo_constraints,
                     "identity": store.three_layer.get_identity()[:2000],
                     "previous_chapters": previous_chapters,
@@ -2478,6 +2508,49 @@ async def get_project(project_id: str):
         "created_at": project.created_at.isoformat(),
         "updated_at": project.updated_at.isoformat(),
     }
+
+
+@app.get("/api/projects/{project_id}/writing-styles/presets")
+async def get_writing_style_presets():
+    """获取所有写作风格预设"""
+    from models import WRITING_STYLE_PRESETS
+    return [{"id": p.id, "name": p.name, "description": p.description,
+             "tone": p.tone, "sentence_length": p.sentence_length,
+             "vocabulary": p.vocabulary, "pov": p.pov,
+             "dialogue_ratio": p.dialogue_ratio, "excitement_preference": p.excitement_preference}
+            for p in WRITING_STYLE_PRESETS]
+
+
+@app.get("/api/projects/{project_id}/writing-style")
+async def get_writing_style(project_id: str):
+    """获取当前项目的写作风格"""
+    project = resolve_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project_dir = projects_root() / project_id
+    project_json_path = project_dir / "project.json"
+    try:
+        data = json.loads(project_json_path.read_text(encoding="utf-8"))
+        return {"writing_style": data.get("writing_style")}
+    except Exception:
+        return {"writing_style": None}
+
+
+@app.put("/api/projects/{project_id}/writing-style")
+async def set_writing_style(project_id: str, payload: Dict[str, Any]):
+    """保存写作风格到项目配置"""
+    project = resolve_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project_dir = projects_root() / project_id
+    project_json_path = project_dir / "project.json"
+    try:
+        data = json.loads(project_json_path.read_text(encoding="utf-8"))
+        data["writing_style"] = payload.get("writing_style")
+        project_json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"status": "saved", "writing_style": data["writing_style"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/projects/{project_id}/chapters")

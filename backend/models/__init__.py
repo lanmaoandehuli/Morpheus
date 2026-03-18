@@ -422,3 +422,48 @@ class ConsistencyRule(BaseModel):
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# ── 写作风格 ──
+
+class WritingStylePreset(BaseModel):
+    """预设写作风格"""
+    id: str
+    name: str
+    description: str
+    # 语气
+    tone: str = "中性"            # 轻松/幽默/严肃/压抑/中性
+    # 句式
+    sentence_length: str = "交替" # 长句/短句/交替
+    # 词汇
+    vocabulary: str = "白话"      # 古风/白话/网络
+    # 人称
+    pov: str = "第三人称限定"    # 第一人称/第三人称全知/第三人称限定
+    # 对话占比
+    dialogue_ratio: str = "均衡"   # 对话多/叙述多/均衡
+    # 爽点偏好
+    excitement_preference: str = ""  # 空=按类型自动
+
+
+WRITING_STYLE_PRESETS: List[WritingStylePreset] = [
+    WritingStylePreset(
+        id="light", name="轻松爽文", description="节奏快、爽点多、打脸频繁",
+        tone="轻松", sentence_length="短句", vocabulary="白话", pov="第三人称限定",
+        dialogue_ratio="对话多", excitement_preference="爽文"),
+    WritingStylePreset(
+        id="humor", name="幽默喜剧", description="对白风趣、吐槽密集、反转多",
+        tone="幽默", sentence_length="交替", vocabulary="网络", pov="第三人称限定",
+        dialogue_ratio="对话多", excitement_preference="幽默"),
+    WritingStylePreset(
+        id="serious", name="严肃正剧", description="文笔考究、冲突深沉、节奏稳健",
+        tone="严肃", sentence_length="长句", vocabulary="白话", pov="第三人称全知",
+        dialogue_ratio="叙述多", excitement_preference="正剧"),
+    WritingStylePreset(
+        id="ancient", name="古风武侠", description="古韵词汇、章回体风格、诗意描写",
+        tone="中性", sentence_length="长句", vocabulary="古风", pov="第三人称全知",
+        dialogue_ratio="均衡", excitement_preference="武侠"),
+    WritingStylePreset(
+        id="网文通用", name="网文通用", description="起点风、快节奏、高潮密集",
+        tone="轻松", sentence_length="短句", vocabulary="白话", pov="第三人称限定",
+        dialogue_ratio="对话多", excitement_preference="爽文"),
+]
