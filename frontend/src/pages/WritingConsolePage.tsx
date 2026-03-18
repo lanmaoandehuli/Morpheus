@@ -404,6 +404,10 @@ export default function WritingConsolePage() {
             onComplete: () => {
                 addToast('success', '全部章节生成完成！')
                 addRecord({ type: 'generate', description: '全部章节生成完成', status: 'success' })
+                // 刷新项目统计（章节数等），避免计数器不更新
+                if (projectId) {
+                    fetchProject(projectId, { force: true })
+                }
             },
         })
     }
