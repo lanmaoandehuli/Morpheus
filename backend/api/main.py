@@ -3262,6 +3262,39 @@ def _build_knowledge_context(store, project_id: str, chapter_number: int) -> str
     except Exception:
         pass
 
+    # ── RAG 写作知识检索 ──
+    try:
+        from services.rag_knowledge import search_writing_knowledge
+
+        rag_query_parts = []
+        if current_event:
+            if current_event.title:
+                rag_query_parts.append(current_event.title)
+            if current_event.goal:
+                rag_query_parts.append(current_event.goal)
+        # 尝试获取当前章节标题
+        try:
+            ch_dir = project_path(project_id) / "chapters"
+            if ch_dir.exists():
+                ch_file = ch_dir / f"{chapter_number:04d}.json"
+                if ch_file.exists():
+                    ch_data = json.loads(ch_file.read_text(encoding="utf-8"))
+                    if ch_data.get("title"):
+                        rag_query_parts.append(ch_data["title"])
+        except Exception:
+            pass
+
+        if rag_query_parts:
+            rag_query = " ".join(rag_query_parts)
+            rag_results = search_writing_knowledge(rag_query, top_k=3)
+            if rag_results:
+                rag_lines = ["【写作知识参考】"]
+                for content in rag_results:
+                    rag_lines.append(f"  - {content[:200]}")
+                parts.append("\n".join(rag_lines))
+    except Exception as e:
+        logger.warning("RAG knowledge retrieval failed (non-blocking): %s", e)
+
     return "\n\n".join(parts) if parts else "（暂无知识图谱数据）"
 
 
