@@ -690,7 +690,7 @@ class KnowledgeStore:
         from models import EventStatus
         return StoryEvent(
             id=r["id"], project_id=r["project_id"], volume_id=r["volume_id"],
-            storyline_id=r.get("storyline_id"),
+            storyline_id=r["storyline_id"] if "storyline_id" in r.keys() else None,
             event_number=r["event_number"], title=r["title"],
             summary=r["summary"] or "", goal=r["goal"] or "",
             status=EventStatus(r["status"]), is_locked=bool(r["is_locked"]),
@@ -702,13 +702,13 @@ class KnowledgeStore:
 
     @staticmethod
     def _row_to_storyline(r) -> "Storyline":
-        from models import StorylineStatus
+        from models import Storyline, StorylineStatus
         return Storyline(
             id=r["id"], project_id=r["project_id"], volume_id=r["volume_id"],
-            title=r["title"], color=r.get("color", "#6b7280"),
-            description=r.get("description") or "",
-            status=StorylineStatus(r.get("status", "active")),
-            sort_order=r.get("sort_order", 0),
+            title=r["title"], color=r["color"] if "color" in r.keys() else "#6b7280",
+            description=r["description"] if "description" in r.keys() else "",
+            status=StorylineStatus(r["status"] if "status" in r.keys() else "active"),
+            sort_order=r["sort_order"] if "sort_order" in r.keys() else 0,
             created_at=datetime.fromisoformat(r["created_at"]),
             updated_at=datetime.fromisoformat(r["updated_at"]),
         )
