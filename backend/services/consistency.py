@@ -59,19 +59,30 @@ class CharacterStateRule(ConsistencyRule):
         conflicts = []
         chapter_id = context.get("chapter_id", 0)
         entities = context.get("entities", [])
-        
+        # 新增：从数据库读取的实际角色快照数据
+        char_states = context.get("character_states", [])
+
+        # 构建角色名→状态映射（来自数据库快照）
+        state_map: Dict[str, Dict[str, Any]] = {}
+        for cs in char_states:
+            state_map[cs["character_name"]] = cs
+            state_map[cs.get("character_id", "")] = cs
+
         death_patterns = [
             r"死亡", r"去世", r"死了", r"被杀", r"被刺",
             r"断气", r"咽气", r"心脏停止",
         ]
-        
+
         for entity in entities:
             if entity.entity_type != "character":
                 continue
-            
-            is_dead = entity.attrs.get("is_dead", False)
+
+            # 优先用数据库快照判断存活状态
+            char_state = state_map.get(entity.name) or state_map.get(entity.entity_id)
+            is_dead = (char_state and not char_state.get("is_alive")) if char_state else entity.attrs.get("is_dead", False)
             last_seen = entity.last_seen_chapter
-            
+
+            # 检查：角色已死亡但在本章出场
             for pattern in death_patterns:
                 if re.search(pattern, draft) and entity.name in draft:
                     if is_dead and last_seen < chapter_id:
@@ -80,11 +91,11 @@ class CharacterStateRule(ConsistencyRule):
                             severity=Severity.P0,
                             rule_id=self.rule_id,
                             evidence_paths=[f"entity_{entity.entity_id}"],
-                            reason=f"角色{entity.name}已被确定死亡，但在本章出现",
+                            reason=f"角色【{entity.name}】已死亡，但在本章出现",
                             suggested_fix="移除该角色出场、改为回忆段落，或修正角色状态",
                             chapter_id=chapter_id
                         ))
-            
+
             abilities = entity.attrs.get("abilities", [])
             for ability in abilities:
                 if f"{entity.name}不会{ability}" in draft or f"{entity.name}没有{ability}" in draft:
@@ -94,11 +105,25 @@ class CharacterStateRule(ConsistencyRule):
                             severity=Severity.P1,
                             rule_id=self.rule_id,
                             evidence_paths=[f"entity_{entity.entity_id}"],
-                            reason=f"角色{entity.name}的能力设定冲突",
+                            reason=f"角色【{entity.name}】的能力设定冲突：{ability}",
                             suggested_fix="统一能力描述",
                             chapter_id=chapter_id
                         ))
-        
+
+            # 检查：角色当前位置与剧情矛盾（位置冲突）
+            if char_state and char_state.get("location"):
+                known_location = char_state["location"]
+                # 如果草稿提到角色在"某地"但已知位置不同，发出警告
+                location_contradictions = [
+                    (loc, f"角色【{entity.name}】已知位置为【{known_location}】")
+                    for loc in ["皇宫", "江湖", "战场", "酒楼", "山林"]
+                    if loc in draft and known_location and loc != known_location
+                    and entity.name in draft
+                ]
+                for loc, reason in location_contradictions:
+                    # 简单检测：草稿提到角色在某地，但该地与已知位置不符
+                    pass  # 保守策略：暂不自动判断，避免误报
+
         return conflicts
 
 
@@ -227,24 +252,43 @@ class ForeshadowRule(ConsistencyRule):
     def check(self, draft: str, context: Dict[str, Any]) -> List[Conflict]:
         conflicts = []
         chapter_id = context.get("chapter_id", 0)
-        
+
+        # 优先从 open_threads 表读取（数据库实际数据）
+        open_threads = context.get("open_threads", [])
         foreshadowings = context.get("foreshadowings", [])
         callbacks = context.get("callbacks", [])
-        
-        for fs in foreshadowings:
-            if fs.get("target_chapter") == chapter_id:
+
+        # 从 open_threads 检查伏笔回收
+        for fs in open_threads:
+            target_ch = fs.get("target_chapter")
+            if target_ch and target_ch == chapter_id:
                 keyword = fs.get("keyword", "")
-                if keyword and not any(keyword in cb for cb in callbacks):
+                if keyword and not any(keyword in str(cb) for cb in callbacks):
                     conflicts.append(Conflict(
                         id=str(uuid4()),
                         severity=Severity.P2,
                         rule_id=self.rule_id,
-                        evidence_paths=[f"chapter_{fs.get('source_chapter')}"],
-                        reason=f"伏笔待回收: {fs.get('keyword', '')}",
+                        evidence_paths=[f"chapter_{fs.get('source_chapter', '?')}"],
+                        reason=f"⚠️ 伏笔待回收: 【{keyword}】应在第{chapter_id}章回收",
+                        suggested_fix=f"在本章中回收伏笔「{keyword}」",
+                        chapter_id=chapter_id
+                    ))
+
+        # 从 foreshadowings 列表检查（兼容旧格式）
+        for fs in foreshadowings:
+            if fs.get("target_chapter") == chapter_id:
+                keyword = fs.get("keyword", "")
+                if keyword and not any(keyword in str(cb) for cb in callbacks):
+                    conflicts.append(Conflict(
+                        id=str(uuid4()),
+                        severity=Severity.P2,
+                        rule_id=self.rule_id,
+                        evidence_paths=[f"chapter_{fs.get('source_chapter', '?')}"],
+                        reason=f"⚠️ 伏笔待回收: 【{keyword}】",
                         suggested_fix="在本章中回收伏笔",
                         chapter_id=chapter_id
                     ))
-        
+
         return conflicts
 
 

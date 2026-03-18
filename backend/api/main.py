@@ -3488,12 +3488,39 @@ async def stream_draft(chapter_id: str, force: bool = False, resume_from: int = 
     )
 
 
+# ──────────────────────────────
+# 一致性校验辅助
+# ──────────────────────────────
+
+def _get_open_threads(store) -> List[Dict[str, Any]]:
+    """从 open_threads 表读取未回收的伏笔线索"""
+    try:
+        from memory import KnowledgeStore
+        if isinstance(store, KnowledgeStore):
+            conn = store._connection().__enter__()
+            try:
+                rows = conn.execute(
+                    "SELECT keyword, source_chapter, target_chapter FROM open_threads WHERE is_resolved = 0"
+                ).fetchall()
+                return [{"keyword": r["keyword"], "source_chapter": r["source_chapter"],
+                         "target_chapter": r["target_chapter"]} for r in rows]
+            finally:
+                conn.close()
+    except Exception:
+        pass
+    return []
+
+
 @app.post("/api/consistency/check")
 async def check_consistency(req: ConsistencyCheckRequest):
     project = resolve_project(req.project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     store = get_or_create_store(req.project_id)
+
+    # 从数据库读取角色当前状态快照（位置、存活、战力等）
+    character_states = store.get_all_character_states(req.project_id)
+
     engine = ConsistencyEngine()
     result = engine.check(
         req.draft,
@@ -3503,6 +3530,10 @@ async def check_consistency(req: ConsistencyCheckRequest):
             "events": store.get_all_events(),
             "identity": store.three_layer.get_identity(),
             "taboo_constraints": project.taboo_constraints,
+            # 新增：角色快照数据
+            "character_states": character_states,
+            # 伏笔数据（从 open_threads 表读取）
+            "open_threads": _get_open_threads(store),
         },
     )
     return result

@@ -555,6 +555,44 @@ class MemoryStore:
     def get_all_events(self) -> List[EventEdge]:
         return self.get_events()
 
+    # ──────────────────────────────
+    # Character States（角色快照）
+    # ──────────────────────────────
+
+    def get_all_character_states(self, project_id: str) -> List[Dict[str, Any]]:
+        """获取项目所有角色在最新章节的状态快照（含位置、存活、战力等）"""
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            # 拿每个角色在最新章节的快照
+            cursor.execute("""
+                SELECT cs.*, ct.name as character_name, ct.is_alive as template_is_alive
+                FROM character_states cs
+                JOIN character_templates ct ON cs.character_id = ct.id
+                WHERE ct.project_id = ?
+                AND cs.as_of_chapter = (
+                    SELECT MAX(as_of_chapter) FROM character_states WHERE character_id = cs.character_id
+                )
+                ORDER BY ct.name
+            """, (project_id,))
+            rows = cursor.fetchall()
+            results = []
+            for r in rows:
+                results.append({
+                    "character_id": r["character_id"],
+                    "character_name": r["character_name"],
+                    "age": r["age"],
+                    "location": r["location"] or "未知",
+                    "status": r["status"] or "正常",
+                    "emotional_state": r["emotional_state"] or "未知",
+                    "abilities": r["abilities"] or "",
+                    "weapons": r["weapons"] or "",
+                    "battle_power": r["battle_power"] or "未知",
+                    "inventory": r["inventory"] or "",
+                    "is_alive": bool(r["template_is_alive"]),
+                    "as_of_chapter": r["as_of_chapter"],
+                })
+            return results
+
     def delete_events_for_chapter(self, chapter: int):
         with self._connection() as conn:
             cursor = conn.cursor()
