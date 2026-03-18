@@ -136,6 +136,7 @@ class Chapter(BaseModel):
     first_pass_ok: Optional[bool] = None
     memory_hit_count: int = 0
     p0_conflict_count: int = 0
+    summary: Optional[str] = None
     conflicts: List[Conflict] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)

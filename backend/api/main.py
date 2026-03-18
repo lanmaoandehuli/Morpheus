@@ -43,6 +43,7 @@ from models import (
     Project,
     ProjectStatus,
     ReviewAction,
+    Severity,
 )
 from services.consistency import ConsistencyEngine
 
@@ -1695,6 +1696,36 @@ def finalize_generated_draft(
 
     upsert_graph_from_chapter(store, chapter)
     upsert_chapter_memory(store, chapter)
+
+    # ── 章节自动摘要 ──
+    try:
+        summary_prompt = f"请用100字以内概括以下章节的核心内容，只输出摘要：\n标题：{chapter.title}\n正文：{(chapter.draft or '')[:2000]}"
+        summary_result = studio.llm_client.chat([{"role": "user", "content": summary_prompt}])
+        if summary_result:
+            chapter.summary = str(summary_result).strip()[:200]
+    except Exception as e:
+        logger.warning("章节摘要生成失败，跳过: %s", e)
+
+    # ── 一致性校验增强：已死亡角色检查 ──
+    try:
+        kg = store.knowledge
+        all_chars = kg.list_characters(project.id)
+        dead_chars = [c for c in all_chars if not c.is_alive]
+        if dead_chars:
+            draft_text = chapter.draft or ""
+            for dc in dead_chars:
+                if dc.name and dc.name in draft_text:
+                    chapter.conflicts.append(Conflict(
+                        id=str(uuid4()),
+                        severity=Severity.P1,
+                        rule_id="dead_character_check",
+                        evidence_paths=[],
+                        reason=f"已死亡角色「{dc.name}」在草稿中被提及",
+                        chapter_id=chapter.chapter_number,
+                    ))
+                    logger.warning("发现已死亡角色在草稿中被提及: %s", dc.name)
+    except Exception as e:
+        logger.warning("已死亡角色检查失败，跳过: %s", e)
     store.sync_file_memories()
     traces[chapter.id] = trace
     save_trace(chapter.project_id, chapter.id, trace)
@@ -3186,9 +3217,15 @@ def _build_knowledge_context(store, project_id: str, chapter_number: int) -> str
     # ── 伏笔/线索 ──
     planted = kg.list_foreshadowings(project_id, "planted")
     if planted:
+        # 按距当前章节数排序（埋设越早的排越前，最该回收）
+        planted_sorted = sorted(planted, key=lambda f: f.planted_chapter)
         fs_lines = ["【未收伏笔】"]
-        for f in planted[:8]:
-            fs_lines.append(f"  第{f.planted_chapter}章：{f.description}")
+        for f in planted_sorted[:8]:
+            elapsed = chapter_number - f.planted_chapter
+            if elapsed > 10:
+                fs_lines.append(f"  ⚠️ 第{f.planted_chapter}章：{f.description} (已过{elapsed}章，建议尽快回收)")
+            else:
+                fs_lines.append(f"  第{f.planted_chapter}章：{f.description} (已过{elapsed}章)")
         parts.append("\n".join(fs_lines))
 
     open_threads = kg.list_threads(project_id, "open")
@@ -3205,6 +3242,25 @@ def _build_knowledge_context(store, project_id: str, chapter_number: int) -> str
         for r in rules[:10]:
             rule_lines.append(f"  [{r.rule_type}] {r.target}：{r.condition}")
         parts.append("\n".join(rule_lines))
+
+    # ── 近期章节摘要 ──
+    try:
+        ch_dir = project_path(project_id) / "chapters"
+        if ch_dir.exists():
+            ch_files = sorted(ch_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:5]
+            summarized = []
+            for cf in ch_files:
+                data = json.loads(cf.read_text(encoding="utf-8"))
+                if data.get("summary"):
+                    summarized.append(data)
+            if summarized:
+                sm_lines = ["【近期章节摘要】"]
+                summarized.sort(key=lambda x: x.get("chapter_number", 0))
+                for c in summarized:
+                    sm_lines.append(f"  第{c.get('chapter_number', '?')}章 {c.get('title', '')}：{c['summary']}")
+                parts.append("\n".join(sm_lines))
+    except Exception:
+        pass
 
     return "\n\n".join(parts) if parts else "（暂无知识图谱数据）"
 
