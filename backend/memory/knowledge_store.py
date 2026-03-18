@@ -55,11 +55,29 @@ class KnowledgeStore:
             )
         """)
 
+        # 多线叙事故事线表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS storylines (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                volume_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                color TEXT DEFAULT '#6b7280',
+                description TEXT DEFAULT '',
+                status TEXT DEFAULT 'active',
+                sort_order INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (volume_id) REFERENCES volumes(id)
+            )
+        """)
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS story_events (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
                 volume_id TEXT NOT NULL,
+                storyline_id TEXT,
                 event_number INTEGER NOT NULL,
                 title TEXT NOT NULL,
                 summary TEXT DEFAULT '',
@@ -70,7 +88,8 @@ class KnowledgeStore:
                 involved_character_ids TEXT DEFAULT '[]',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                FOREIGN KEY (volume_id) REFERENCES volumes(id)
+                FOREIGN KEY (volume_id) REFERENCES volumes(id),
+                FOREIGN KEY (storyline_id) REFERENCES storylines(id)
             )
         """)
 
@@ -274,10 +293,10 @@ class KnowledgeStore:
     def create_event(self, e: StoryEvent):
         with self._connection() as conn:
             conn.execute(
-                """INSERT INTO story_events (id,project_id,volume_id,event_number,title,
+                """INSERT INTO story_events (id,project_id,volume_id,storyline_id,event_number,title,
                    summary,goal,status,is_locked,sort_order,involved_character_ids,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (e.id, e.project_id, e.volume_id, e.event_number, e.title,
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (e.id, e.project_id, e.volume_id, e.storyline_id, e.event_number, e.title,
                  e.summary, e.goal, e.status.value, int(e.is_locked), e.sort_order,
                  json.dumps(e.involved_character_ids, ensure_ascii=False),
                  e.created_at.isoformat(), e.updated_at.isoformat()),
@@ -289,11 +308,60 @@ class KnowledgeStore:
         with self._connection() as conn:
             conn.execute(
                 """UPDATE story_events SET title=?,summary=?,goal=?,status=?,
-                   is_locked=?,sort_order=?,involved_character_ids=?,updated_at=? WHERE id=?""",
-                (e.title, e.summary, e.goal, e.status.value, int(e.is_locked),
+                   storyline_id=?,is_locked=?,sort_order=?,involved_character_ids=?,updated_at=? WHERE id=?""",
+                (e.title, e.summary, e.goal, e.status.value,
+                 e.storyline_id, int(e.is_locked),
                  e.sort_order, json.dumps(e.involved_character_ids, ensure_ascii=False),
                  e.updated_at.isoformat(), e.id),
             )
+            conn.commit()
+
+    # ──────────────────────────────
+    # Storyline CRUD（多线叙事）
+    # ──────────────────────────────
+
+    def list_storylines(self, project_id: str, volume_id: Optional[str] = None) -> List["Storyline"]:
+        with self._connection() as conn:
+            sql = "SELECT * FROM storylines WHERE project_id = ?"
+            params: list = [project_id]
+            if volume_id:
+                sql += " AND volume_id = ?"
+                params.append(volume_id)
+            sql += " ORDER BY sort_order, created_at"
+            rows = conn.execute(sql, params).fetchall()
+            return [self._row_to_storyline(r) for r in rows]
+
+    def get_storyline(self, storyline_id: str) -> Optional["Storyline"]:
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM storylines WHERE id = ?", (storyline_id,)).fetchone()
+            return self._row_to_storyline(row) if row else None
+
+    def create_storyline(self, s: "Storyline"):
+        with self._connection() as conn:
+            conn.execute(
+                """INSERT INTO storylines (id,project_id,volume_id,title,color,description,status,sort_order,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (s.id, s.project_id, s.volume_id, s.title, s.color,
+                 s.description, s.status.value, s.sort_order,
+                 s.created_at.isoformat(), s.updated_at.isoformat()),
+            )
+            conn.commit()
+
+    def update_storyline(self, s: "Storyline"):
+        s.updated_at = datetime.now()
+        with self._connection() as conn:
+            conn.execute(
+                """UPDATE storylines SET title=?,color=?,description=?,status=?,sort_order=?,updated_at=? WHERE id=?""",
+                (s.title, s.color, s.description, s.status.value, s.sort_order,
+                 s.updated_at.isoformat(), s.id),
+            )
+            conn.commit()
+
+    def delete_storyline(self, storyline_id: str):
+        with self._connection() as conn:
+            # 先解除该故事线的事件关联（设为无故事线）
+            conn.execute("UPDATE story_events SET storyline_id = NULL WHERE storyline_id = ?", (storyline_id,))
+            conn.execute("DELETE FROM storylines WHERE id = ?", (storyline_id,))
             conn.commit()
 
     # ──────────────────────────────
@@ -622,11 +690,25 @@ class KnowledgeStore:
         from models import EventStatus
         return StoryEvent(
             id=r["id"], project_id=r["project_id"], volume_id=r["volume_id"],
+            storyline_id=r.get("storyline_id"),
             event_number=r["event_number"], title=r["title"],
             summary=r["summary"] or "", goal=r["goal"] or "",
             status=EventStatus(r["status"]), is_locked=bool(r["is_locked"]),
             sort_order=r["sort_order"],
             involved_character_ids=json.loads(r["involved_character_ids"]) if r["involved_character_ids"] else [],
+            created_at=datetime.fromisoformat(r["created_at"]),
+            updated_at=datetime.fromisoformat(r["updated_at"]),
+        )
+
+    @staticmethod
+    def _row_to_storyline(r) -> "Storyline":
+        from models import StorylineStatus
+        return Storyline(
+            id=r["id"], project_id=r["project_id"], volume_id=r["volume_id"],
+            title=r["title"], color=r.get("color", "#6b7280"),
+            description=r.get("description") or "",
+            status=StorylineStatus(r.get("status", "active")),
+            sort_order=r.get("sort_order", 0),
             created_at=datetime.fromisoformat(r["created_at"]),
             updated_at=datetime.fromisoformat(r["updated_at"]),
         )

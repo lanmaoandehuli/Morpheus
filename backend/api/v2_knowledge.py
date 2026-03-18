@@ -104,6 +104,7 @@ async def create_event(project_id: str, payload: Dict[str, Any]):
         id=str(uuid4()),
         project_id=project_id,
         volume_id=payload.get("volume_id", ""),
+        storyline_id=payload.get("storyline_id"),
         event_number=payload.get("event_number", 1),
         title=payload.get("title", "未命名事件"),
         summary=payload.get("summary", ""),
@@ -125,11 +126,66 @@ async def update_event(project_id: str, event_id: str, payload: Dict[str, Any]):
         raise HTTPException(status_code=404, detail="Event not found")
     if "involved_character_ids" in payload:
         e.involved_character_ids = payload["involved_character_ids"]
-    for key in ("title", "summary", "goal", "status", "is_locked", "sort_order", "volume_id"):
+    for key in ("title", "summary", "goal", "status", "is_locked", "sort_order", "volume_id", "storyline_id"):
         if key in payload:
             setattr(e, key, _enum_val(type(e), key, payload[key]))
     store.knowledge.update_event(e)
     return e.model_dump()
+
+
+# ──────────────────────────────
+# Storylines（多线叙事）
+# ──────────────────────────────
+
+@router.get("/projects/{project_id}/storylines")
+async def list_storylines(project_id: str, volume_id: Optional[str] = None):
+    """列出某卷下的所有故事线（多线叙事）"""
+    store = _ensure_project(project_id)
+    items = store.knowledge.list_storylines(project_id, volume_id)
+    return [s.model_dump() for s in items]
+
+
+@router.post("/projects/{project_id}/storylines")
+async def create_storyline(project_id: str, payload: Dict[str, Any]):
+    """创建新故事线"""
+    store = _ensure_project(project_id)
+    from models import Storyline
+    now = datetime.now()
+    s = Storyline(
+        id=str(uuid4()),
+        project_id=project_id,
+        volume_id=payload.get("volume_id", ""),
+        title=payload.get("title", "新故事线"),
+        color=payload.get("color", "#6b7280"),
+        description=payload.get("description", ""),
+        sort_order=payload.get("sort_order", 0),
+        created_at=now,
+        updated_at=now,
+    )
+    store.knowledge.create_storyline(s)
+    return s.model_dump()
+
+
+@router.put("/projects/{project_id}/storylines/{storyline_id}")
+async def update_storyline(project_id: str, storyline_id: str, payload: Dict[str, Any]):
+    """更新故事线"""
+    store = _ensure_project(project_id)
+    s = store.knowledge.get_storyline(storyline_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Storyline not found")
+    for key in ("title", "color", "description", "status", "sort_order"):
+        if key in payload:
+            setattr(s, key, _enum_val(type(s), key, payload[key]))
+    store.knowledge.update_storyline(s)
+    return s.model_dump()
+
+
+@router.delete("/projects/{project_id}/storylines/{storyline_id}")
+async def delete_storyline(project_id: str, storyline_id: str):
+    """删除故事线（关联事件自动解除绑定）"""
+    store = _ensure_project(project_id)
+    store.knowledge.delete_storyline(storyline_id)
+    return {"status": "deleted", "id": storyline_id}
 
 
 # ──────────────────────────────

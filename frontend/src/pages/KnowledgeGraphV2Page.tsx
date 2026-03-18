@@ -4,14 +4,15 @@ import PageTransition from '../components/ui/PageTransition'
 import Skeleton from '../components/ui/Skeleton'
 import {
   volumes, events, characters, relations, cheats, worldFacts,
-  foreshadowings, threads, rules, summary,
+  foreshadowings, threads, rules, summary, storylines,
   type Volume, type StoryEvent, type CharacterTemplate,
+  type Storyline,
   type CheatSystem, type WorldFact, type Foreshadowing,
   type OpenThread, type ConsistencyRule, type KnowledgeSummary,
 } from '../services/knowledgeV2'
 import { api } from '../lib/api'
 
-const TABS = ['大纲', '角色', '金手指', '世界观', '伏笔/线索', '规则'] as const
+const TABS = ['大纲', '多线叙事', '角色', '金手指', '世界观', '伏笔/线索', '规则'] as const
 type Tab = typeof TABS[number]
 
 function useProjectId(): string {
@@ -199,6 +200,166 @@ function OutlineTab({ pid }: { pid: string }) {
             )}
           </div>
         ))}
+      </Section>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════
+   Tab: 多线叙事 (Storylines)
+   ═══════════════════════════════════ */
+const STORYLINE_COLORS = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
+  '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280',
+]
+
+function StorylinesTab({ pid }: { pid: string }) {
+  const [vols, setVols] = useState<Volume[]>([])
+  const [allStorylines, setAllStorylines] = useState<Storyline[]>([])
+  const [allEvents, setAllEvents] = useState<Record<string, StoryEvent[]>>({})
+  const [loading, setLoading] = useState(true)
+  const [expandedVol, setExpandedVol] = useState<string | null>(null)
+  const [newLineTitle, setNewLineTitle] = useState<Record<string, string>>({})
+  const [editingTitle, setEditingTitle] = useState<Record<string, string>>({})
+
+  const load = useCallback(async () => {
+    const [v, sl, ev] = await Promise.all([
+      volumes.list(pid),
+      storylines.list(pid),
+      events.list(pid),
+    ])
+    setVols(v)
+    setAllStorylines(sl)
+    const em: Record<string, StoryEvent[]> = {}
+    for (const e of ev) {
+      ;(em[e.volume_id] ??= []).push(e)
+    }
+    setAllEvents(em)
+    setLoading(false)
+  }, [pid])
+
+  useEffect(() => { load() }, [load])
+
+  const addStoryline = async (volId: string) => {
+    const title = newLineTitle[volId]?.trim()
+    if (!title) return
+    const existingInVol = allStorylines.filter(s => s.volume_id === volId)
+    const color = STORYLINE_COLORS[existingInVol.length % STORYLINE_COLORS.length]
+    await storylines.create(pid, { volume_id: volId, title, color })
+    setNewLineTitle(t => ({ ...t, [volId]: '' }))
+    load()
+  }
+
+  const updateStoryline = async (sl: Storyline, title: string) => {
+    await storylines.update(pid, sl.id, { title })
+    setEditingTitle(t => ({ ...t, [sl.id]: '' }))
+    load()
+  }
+
+  const deleteStoryline = async (id: string) => {
+    if (!confirm('删除故事线？关联事件会解除绑定。')) return
+    await storylines.delete(pid, id)
+    load()
+  }
+
+  const assignEvent = async (eventId: string, storylineId: string | null) => {
+    await events.update(pid, eventId, { storyline_id: storylineId })
+    load()
+  }
+
+  if (loading) return <Skeleton className="h-64" />
+
+  return (
+    <div>
+      <Section title="多线叙事">
+        {vols.length === 0 && <p className="text-sm text-zinc-400">暂无卷，请先在大纲标签创建卷</p>}
+        {vols.map(vol => {
+          const volLines = allStorylines.filter(s => s.volume_id === vol.id)
+          const volEvents = allEvents[vol.id] || []
+          const unassigned = volEvents.filter(e => !e.storyline_id)
+          return (
+            <div key={vol.id} className="mb-5">
+              <div
+                className="flex items-center gap-2 cursor-pointer py-1"
+                onClick={() => setExpandedVol(exp => exp === vol.id ? null : vol.id)}
+              >
+                <span className="text-zinc-400 text-xs">{expandedVol === vol.id ? '▼' : '▶'}</span>
+                <span className="text-sm font-semibold text-zinc-800">{vol.title}</span>
+                <span className="text-xs text-zinc-400">{volLines.length} 条故事线</span>
+              </div>
+              {expandedVol === vol.id && (
+                <div className="ml-4 mt-2 border-l-2 border-zinc-200 pl-4 space-y-3">
+                  {volLines.map(sl => {
+                    const slEvents = volEvents.filter(e => e.storyline_id === sl.id)
+                    return (
+                      <div key={sl.id} className="bg-zinc-50 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: sl.color }} />
+                          {editingTitle[sl.id] !== undefined ? (
+                            <input
+                              autoFocus
+                              defaultValue={sl.title}
+                              className="border border-indigo-300 rounded px-2 py-0.5 text-sm flex-1"
+                              onBlur={e => updateStoryline(sl, e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') updateStoryline(sl, (e.target as HTMLInputElement).value) }}
+                            />
+                          ) : (
+                            <span
+                              className="text-sm font-medium text-zinc-800 cursor-pointer hover:text-indigo-600"
+                              onClick={() => setEditingTitle(t => ({ ...t, [sl.id]: sl.title }))}
+                            >{sl.title}</span>
+                          )}
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${sl.status === 'completed' ? 'bg-green-100 text-green-700' : sl.status === 'paused' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {sl.status === 'completed' ? '完成' : sl.status === 'paused' ? '暂停' : '进行中'}
+                          </span>
+                          <button onClick={() => deleteStoryline(sl.id)} className="text-xs text-red-400 hover:text-red-600 ml-auto">删除</button>
+                        </div>
+                        {slEvents.length === 0 && <p className="text-xs text-zinc-300 ml-5">暂无事件</p>}
+                        {slEvents.map(e => (
+                          <div key={e.id} className="flex items-center gap-2 ml-5 py-0.5">
+                            <span className="text-xs text-zinc-400">📌</span>
+                            <span className="text-sm text-zinc-700">{e.title}</span>
+                            <button onClick={() => assignEvent(e.id, null)} className="text-xs text-zinc-400 hover:text-red-500 ml-auto">解除</button>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                  {unassigned.length > 0 && (
+                    <div>
+                      <p className="text-xs text-zinc-400 mb-1">未分配事件（点击分配到故事线）</p>
+                      {unassigned.map(e => (
+                        <div key={e.id} className="flex items-center gap-1 flex-wrap">
+                          <span className="text-xs text-zinc-500">📌 {e.title}</span>
+                          {volLines.map(sl => (
+                            <button
+                              key={sl.id}
+                              onClick={() => assignEvent(e.id, sl.id)}
+                              className="text-xs px-1.5 py-0.5 rounded border hover:opacity-80"
+                              style={{ borderColor: sl.color, color: sl.color }}
+                            >
+                              → {sl.title}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      placeholder="新故事线名称..."
+                      value={newLineTitle[vol.id] || ''}
+                      onChange={e => setNewLineTitle(t => ({ ...t, [vol.id]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') addStoryline(vol.id) }}
+                      className="border border-zinc-300 rounded px-2 py-1 text-xs flex-1 focus:outline-none focus:border-indigo-400"
+                    />
+                    <button onClick={() => addStoryline(vol.id)} className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700">创建</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </Section>
     </div>
   )
@@ -583,6 +744,7 @@ export default function KnowledgeGraphV2Page() {
 
   const TabComponent: Record<Tab, React.FC<{ pid: string }>> = {
     '大纲': OutlineTab,
+    '多线叙事': StorylinesTab,
     '角色': CharactersTab,
     '金手指': CheatsTab,
     '世界观': WorldTab,

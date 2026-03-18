@@ -227,6 +227,12 @@ class EventStatus(str, Enum):
     COMPLETED = "completed"
 
 
+class StorylineStatus(str, Enum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    PAUSED = "paused"
+
+
 class ForeshadowStatus(str, Enum):
     PLANTED = "planted"
     COLLECTED = "collected"
@@ -265,6 +271,7 @@ class StoryEvent(BaseModel):
     id: str
     project_id: str
     volume_id: str
+    storyline_id: Optional[str] = None  # 多线叙事：所属故事线
     event_number: int
     title: str
     summary: Optional[str] = ""
@@ -273,6 +280,20 @@ class StoryEvent(BaseModel):
     is_locked: bool = False
     sort_order: int = 0
     involved_character_ids: List[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+class Storyline(BaseModel):
+    """多线叙事：同一卷内的并行情节线（如江湖线、宫廷线、感情线）"""
+    id: str
+    project_id: str
+    volume_id: str
+    title: str
+    color: str = "#6b7280"          # 故事线颜色，用于UI区分
+    description: Optional[str] = ""
+    status: StorylineStatus = StorylineStatus.ACTIVE
+    sort_order: int = 0
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 

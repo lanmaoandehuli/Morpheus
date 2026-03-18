@@ -16,9 +16,19 @@ export interface Volume {
 
 export interface StoryEvent {
   id: string; project_id: string; volume_id: string
+  storyline_id: string | null  // 多线叙事：所属故事线
   event_number: number; title: string; summary: string; goal: string
   status: string; is_locked: boolean; sort_order: number
   involved_character_ids: string[]
+  created_at: string; updated_at: string
+}
+
+export type StorylineStatus = 'active' | 'completed' | 'paused'
+
+export interface Storyline {
+  id: string; project_id: string; volume_id: string
+  title: string; color: string; description: string
+  status: StorylineStatus; sort_order: number
   created_at: string; updated_at: string
 }
 
@@ -101,6 +111,16 @@ export const events = {
     v2.get<StoryEvent[]>(`/projects/${pid}/events`, { params: volumeId ? { volume_id: volumeId } : {} }).then(r => r.data),
   create: (pid: string, data: Partial<StoryEvent>) => v2.post<StoryEvent>(`/projects/${pid}/events`, data).then(r => r.data),
   update: (pid: string, id: string, data: Partial<StoryEvent>) => v2.put<StoryEvent>(`/projects/${pid}/events/${id}`, data).then(r => r.data),
+}
+
+// ── Storylines（多线叙事） ──
+
+export const storylines = {
+  list: (pid: string, volumeId?: string) =>
+    v2.get<Storyline[]>(`/projects/${pid}/storylines`, { params: volumeId ? { volume_id: volumeId } : {} }).then(r => r.data),
+  create: (pid: string, data: Partial<Storyline>) => v2.post<Storyline>(`/projects/${pid}/storylines`, data).then(r => r.data),
+  update: (pid: string, id: string, data: Partial<Storyline>) => v2.put<Storyline>(`/projects/${pid}/storylines/${id}`, data).then(r => r.data),
+  delete: (pid: string, id: string) => v2.delete(`/projects/${pid}/storylines/${id}`).then(r => r.data),
 }
 
 // ── Characters ──

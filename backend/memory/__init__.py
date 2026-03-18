@@ -253,6 +253,11 @@ class MemoryStore:
             # ── v2 tables: 大纲 + 知识图谱 ──
             from memory.knowledge_store import KnowledgeStore
             KnowledgeStore.create_tables(conn)
+            # Migration: add storyline_id to story_events if not exists
+            cursor.execute("PRAGMA table_info(story_events)")
+            cols = [r[1] for r in cursor.fetchall()]
+            if "storyline_id" not in cols:
+                cursor.execute("ALTER TABLE story_events ADD COLUMN storyline_id TEXT")
             conn.commit()
 
     def _file_item_id(self, source_path: Path) -> str:
